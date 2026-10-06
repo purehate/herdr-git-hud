@@ -3,15 +3,20 @@ package traceevent
 import "strings"
 
 type Event struct {
-	Event     string   `json:"event"`
-	SID       string   `json:"sid"`
-	Argv      []string `json:"argv"`
-	Worktree  string   `json:"worktree"`
-	Name      string   `json:"name"`
-	Hierarchy string   `json:"hierarchy"`
-	Category  string   `json:"category"`
-	Label     string   `json:"label"`
-	Code      int      `json:"code"`
+	HUDType        string   `json:"hud_type,omitempty"`
+	Operation      string   `json:"operation,omitempty"`
+	OperationLabel string   `json:"operation_label,omitempty"`
+	Repo           string   `json:"repo,omitempty"`
+	ExitCode       int      `json:"exit_code,omitempty"`
+	Event          string   `json:"event"`
+	SID            string   `json:"sid"`
+	Argv           []string `json:"argv"`
+	Worktree       string   `json:"worktree"`
+	Name           string   `json:"name"`
+	Hierarchy      string   `json:"hierarchy"`
+	Category       string   `json:"category"`
+	Label          string   `json:"label"`
+	Code           int      `json:"code"`
 }
 
 var visibleCommands = map[string]bool{

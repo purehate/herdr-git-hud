@@ -106,9 +106,9 @@ func titleLine(state model.State, frame int) string {
 	label := strings.ToUpper(state.Phase)
 	switch state.Result {
 	case "success":
-		icon, color, label = "✓", green, "GIT OPERATION COMPLETE"
+		icon, color, label = "✓", green, "OPERATION COMPLETE"
 	case "failure":
-		icon, color, label = "✗", red, "GIT OPERATION FAILED"
+		icon, color, label = "✗", red, "OPERATION FAILED"
 	}
 	return color + icon + "  " + label + reset
 }
@@ -129,7 +129,10 @@ func stepLines(state model.State, frame int) []string {
 		case "failure":
 			icon, color = "✗", red
 		}
-		label := "git " + step.Command
+		label := step.Label
+		if label == "" {
+			label = "git " + step.Command
+		}
 		if step.Phase != "" && step.Phase != "Completed" && step.Phase != "Failed" {
 			label += " · " + step.Phase
 		}
@@ -159,7 +162,9 @@ func repoStatus(status model.RepoStatus) string {
 
 func elapsedLine(state model.State) string {
 	end := model.NowMillis()
-	if state.CloseAt > 0 {
+	if state.Result != "running" && len(state.Steps) > 0 {
+		end = state.Steps[len(state.Steps)-1].FinishedAt
+	} else if state.CloseAt > 0 {
 		end = state.CloseAt - 2200
 	}
 	duration := time.Duration(max(0, end-state.StartedAt)) * time.Millisecond

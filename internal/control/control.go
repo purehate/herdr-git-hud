@@ -36,7 +36,7 @@ func Enable() error {
 	if err := daemon.Ensure(); err != nil {
 		return err
 	}
-	fmt.Println("Git HUD enabled")
+	fmt.Println("Operation HUD enabled")
 	return nil
 }
 
@@ -58,7 +58,7 @@ func Disable() error {
 	if err := daemon.Stop(); err != nil {
 		return err
 	}
-	fmt.Println("Git HUD disabled")
+	fmt.Println("Operation HUD disabled")
 	return nil
 }
 

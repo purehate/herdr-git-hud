@@ -15,6 +15,7 @@ type RepoStatus struct {
 
 type Step struct {
 	Command    string `json:"command"`
+	Label      string `json:"label,omitempty"`
 	Phase      string `json:"phase"`
 	Result     string `json:"result"`
 	ExitCode   int    `json:"exit_code"`

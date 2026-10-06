@@ -28,6 +28,7 @@ const (
 type pendingOperation struct {
 	SID      string
 	Command  string
+	Label    string
 	Argv     []string
 	Repo     string
 	Visible  bool
@@ -119,7 +120,42 @@ func (r *runner) listen(connection *net.UnixConn) error {
 		if err := json.Unmarshal(buffer[:n], &event); err != nil {
 			continue
 		}
-		events <- event
+		if event.HUDType != "" {
+			r.handleExternal(event)
+		} else {
+			events <- event
+		}
+	}
+}
+
+func (r *runner) handleExternal(event traceevent.Event) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := "operation:" + event.Operation
+	switch event.HUDType {
+	case "operation_start":
+		if event.Operation == "" || event.OperationLabel == "" || event.Repo == "" {
+			return
+		}
+		operation := &pendingOperation{
+			SID: key, Label: event.OperationLabel, Repo: filepath.Clean(event.Repo), Started: model.NowMillis(),
+		}
+		visible, err := r.repoIsVisible(operation.Repo)
+		if err != nil || !visible {
+			return
+		}
+		operation.Visible = true
+		operation.Sequence = model.NowMillis()
+		r.pending[key] = operation
+		r.start(operation)
+	case "operation_finish":
+		operation := r.pending[key]
+		if operation == nil {
+			return
+		}
+		r.finish(operation, event.ExitCode)
+		delete(r.pending, key)
 	}
 }
 
@@ -166,8 +202,18 @@ func (r *runner) tryStart(operation *pendingOperation) {
 	}
 	operation.Visible = true
 	operation.Sequence = model.NowMillis()
+	r.start(operation)
+}
+
+func (r *runner) start(operation *pendingOperation) {
 	status, _ := gitinfo.Collect(operation.Repo)
-	step := model.Step{Command: operation.Command, Phase: "Starting", Result: "running", StartedAt: operation.Started}
+	label := operation.Label
+	phase := "Running " + label
+	if label == "" {
+		label = "git " + operation.Command
+		phase = "Starting git " + operation.Command
+	}
+	step := model.Step{Command: operation.Command, Label: label, Phase: "Starting", Result: "running", StartedAt: operation.Started}
 	if r.state.Result == "running" || model.NowMillis() < r.state.CloseAt {
 		r.state.Steps = append(r.state.Steps, step)
 	} else {
@@ -177,7 +223,7 @@ func (r *runner) tryStart(operation *pendingOperation) {
 	r.state.Sequence = operation.Sequence
 	r.state.Repo = operation.Repo
 	r.state.RepoName = filepath.Base(operation.Repo)
-	r.state.Phase = "Starting git " + operation.Command
+	r.state.Phase = phase
 	r.state.Result = "running"
 	r.state.CloseAt = 0
 	r.state.Status = status
@@ -226,11 +272,15 @@ func (r *runner) finish(operation *pendingOperation, code int) {
 	r.state.Result = result
 	r.state.Phase = phase
 	r.state.Status = status
-	r.state.CloseAt = time.Now().Add(lingerDuration).UnixMilli()
+	if result == "success" {
+		r.state.CloseAt = time.Now().Add(lingerDuration).UnixMilli()
+	} else {
+		r.state.CloseAt = 0
+	}
 	if err := writeState(r.paths.StateFile, r.state); err != nil {
 		log.Printf("write completion state: %v", err)
 	}
-	r.scheduleClose(operation.Sequence)
+	r.releaseHUD(operation.Sequence)
 }
 
 func (r *runner) closeHUD() {
@@ -246,7 +296,7 @@ func (r *runner) closeHUD() {
 	}
 }
 
-func (r *runner) scheduleClose(sequence int64) {
+func (r *runner) releaseHUD(sequence int64) {
 	r.closeTimer = time.AfterFunc(lingerDuration, func() {
 		r.mu.Lock()
 		defer r.mu.Unlock()

@@ -1,12 +1,12 @@
 # Git HUD for Herdr
 
-Git HUD opens an animated, non-focused overlay while meaningful Git operations
+Git HUD opens an animated 90% floating popup while meaningful Git operations
 run in the repository currently visible in Herdr. It sees commands launched by
 interactive shells and coding agents through Git's Trace2 event stream.
 
 The initial release deliberately ignores noisy read-only probes such as
 `status`, `diff`, `log`, and `rev-parse`. Consecutive operations are displayed
-as a short timeline and the overlay closes automatically after completion.
+as a short timeline and the popup closes automatically after completion.
 
 ## Local development
 

@@ -42,7 +42,7 @@ type runner struct {
 	herdr      string
 	pending    map[string]*pendingOperation
 	state      model.State
-	overlayID  string
+	hudOpen    bool
 	closeTimer *time.Timer
 }
 
@@ -66,7 +66,7 @@ func Run() error {
 	defer func() { _ = os.Remove(paths.PIDFile) }()
 
 	r := &runner{paths: paths, herdr: herdrBinary(), pending: make(map[string]*pendingOperation)}
-	defer r.closeOverlay()
+	defer r.closeHUD()
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(stop)
@@ -187,11 +187,11 @@ func (r *runner) tryStart(operation *pendingOperation) {
 	if r.closeTimer != nil {
 		r.closeTimer.Stop()
 	}
-	if r.overlayID == "" {
-		var err error
-		r.overlayID, err = r.openOverlay(operation.Repo)
-		if err != nil {
-			log.Printf("open overlay: %v", err)
+	if !r.hudOpen {
+		if err := r.openHUD(operation.Repo); err != nil {
+			log.Printf("open popup: %v", err)
+		} else {
+			r.hudOpen = true
 		}
 	}
 }
@@ -233,15 +233,16 @@ func (r *runner) finish(operation *pendingOperation, code int) {
 	r.scheduleClose(operation.Sequence)
 }
 
-func (r *runner) closeOverlay() {
+func (r *runner) closeHUD() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closeTimer != nil {
 		r.closeTimer.Stop()
 	}
-	if r.overlayID != "" {
-		_ = r.runHerdr("pane", "close", r.overlayID)
-		r.overlayID = ""
+	if r.hudOpen {
+		r.state.CloseAt = model.NowMillis()
+		_ = writeState(r.paths.StateFile, r.state)
+		r.hudOpen = false
 	}
 }
 
@@ -252,10 +253,7 @@ func (r *runner) scheduleClose(sequence int64) {
 		if r.state.Sequence != sequence || r.state.Result == "running" {
 			return
 		}
-		if r.overlayID != "" {
-			_ = r.runHerdr("pane", "close", r.overlayID)
-			r.overlayID = ""
-		}
+		r.hudOpen = false
 	})
 }
 
@@ -283,26 +281,14 @@ func (r *runner) repoIsVisible(repo string) (bool, error) {
 	return err == nil && samePath(activeRepo, repo), err
 }
 
-func (r *runner) openOverlay(repo string) (string, error) {
-	output, err := r.herdrOutput("plugin", "pane", "open", "--plugin", pluginID,
-		"--entrypoint", "hud", "--placement", "overlay", "--cwd", repo, "--no-focus",
+func (r *runner) openHUD(repo string) error {
+	_, err := r.herdrOutput("plugin", "pane", "open", "--plugin", pluginID,
+		"--entrypoint", "hud", "--cwd", repo,
 		"--env", "GIT_HUD_STATE_FILE="+r.paths.StateFile)
 	if err != nil {
-		return "", err
+		return err
 	}
-	var response struct {
-		Result struct {
-			PluginPane struct {
-				Pane struct {
-					ID string `json:"pane_id"`
-				} `json:"pane"`
-			} `json:"plugin_pane"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(output, &response); err != nil {
-		return "", fmt.Errorf("decode overlay response: %w", err)
-	}
-	return response.Result.PluginPane.Pane.ID, nil
+	return nil
 }
 
 func (r *runner) herdrOutput(args ...string) ([]byte, error) {
@@ -313,11 +299,6 @@ func (r *runner) herdrOutput(args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("herdr %s: %w", strings.Join(args, " "), err)
 	}
 	return output, nil
-}
-
-func (r *runner) runHerdr(args ...string) error {
-	_, err := r.herdrOutput(args...)
-	return err
 }
 
 func cleanHerdrEnv() []string {

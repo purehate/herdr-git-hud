@@ -1,0 +1,36 @@
+id = "purehate.git-hud"
+name = "Git HUD"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Animated floating status for Git operations launched by you or your coding agents"
+platforms = ["macos", "linux"]
+
+[[build]]
+command = ["go", "build", "-o", "bin/herdr-git-hud", "./cmd/herdr-git-hud"]
+
+[[startup]]
+command = ["./bin/herdr-git-hud", "daemon", "ensure"]
+
+[[actions]]
+id = "enable"
+title = "Git HUD: enable"
+contexts = ["global"]
+command = ["./bin/herdr-git-hud", "enable"]
+
+[[actions]]
+id = "disable"
+title = "Git HUD: disable"
+contexts = ["global"]
+command = ["./bin/herdr-git-hud", "disable"]
+
+[[actions]]
+id = "status"
+title = "Git HUD: status"
+contexts = ["global"]
+command = ["./bin/herdr-git-hud", "status"]
+
+[[panes]]
+id = "hud"
+title = "Git activity"
+placement = "overlay"
+command = ["./bin/herdr-git-hud", "view"]

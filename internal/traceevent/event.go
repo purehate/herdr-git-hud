@@ -19,14 +19,18 @@ type Event struct {
 	Code           int      `json:"code"`
 }
 
+// add precedes nearly every commit and fetch runs on editor and Lazygit
+// auto-fetch timers, so neither is worth a toast on its own.
 var visibleCommands = map[string]bool{
-	"add": true, "am": true, "apply": true, "branch": true,
+	"am": true, "apply": true, "branch": true,
 	"checkout": true, "cherry-pick": true, "clean": true,
-	"clone": true, "commit": true, "fetch": true, "merge": true,
+	"clone": true, "commit": true, "merge": true,
 	"pull": true, "push": true, "rebase": true, "reset": true,
 	"restore": true, "revert": true, "stash": true, "switch": true,
 	"tag": true,
 }
+
+var listFilters = []string{"--contains", "--no-contains", "--merged", "--no-merged", "--points-at"}
 
 func (e Event) RootSID() string {
 	root, _, _ := strings.Cut(e.SID, "/")
@@ -43,14 +47,32 @@ func IsVisibleOperation(name string, argv []string) bool {
 	}
 	switch name {
 	case "branch":
-		return !hasAnyArgument(argv, "--list", "-l", "--show-current", "-a", "--all", "-r", "--remotes")
+		return hasOperandAfter(argv, name) && !hasAnyArgument(argv, "--list", "-l", "--show-current", "-a", "--all", "-r", "--remotes") &&
+			!hasAnyArgument(argv, listFilters...)
 	case "stash":
 		return !hasAnyArgument(argv, "list", "show")
 	case "tag":
-		return !hasAnyArgument(argv, "--list", "-l")
+		return hasOperandAfter(argv, name) && !hasAnyArgument(argv, "--list", "-l") && !hasAnyArgument(argv, listFilters...)
 	default:
 		return true
 	}
+}
+
+// hasOperandAfter reports whether a non-option argument follows the
+// subcommand; bare `git branch` and `git tag` only list refs.
+func hasOperandAfter(argv []string, subcommand string) bool {
+	for index, argument := range argv {
+		if argument != subcommand {
+			continue
+		}
+		for _, rest := range argv[index+1:] {
+			if !strings.HasPrefix(rest, "-") {
+				return true
+			}
+		}
+		return false
+	}
+	return false
 }
 
 func hasAnyArgument(argv []string, candidates ...string) bool {

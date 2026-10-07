@@ -1,13 +1,24 @@
 # Operation HUD for Herdr
 
-Operation HUD opens an animated 90% floating popup while meaningful operations
-run in the repository currently visible in Herdr. Git commands launched by
+Operation HUD shows a small Herdr toast when a meaningful operation finishes in
+the repository currently visible in Herdr. It uses Herdr's own notification
+toast, the same surface as agent completion notices, so it never takes focus.
+No position is passed, so Herdr's toast placement applies (bottom-right unless
+`[ui.toast.herdr] position` says otherwise). Git commands launched by
 interactive shells and coding agents are detected automatically through Git's
 Trace2 event stream.
 
-The initial release deliberately ignores noisy read-only probes such as
-`status`, `diff`, `log`, and `rev-parse`. Consecutive operations are displayed
-as a short timeline and the popup closes automatically after completion.
+The toast title names the operation and repository. The body summarizes the
+result:
+
+- Success: the new commit for history-writing commands, the branch with
+  ahead/behind counts, and the elapsed time.
+- Failure: the exit code, the last phase reached (for example pre-commit
+  checks), the branch, unresolved conflicts, and the elapsed time.
+
+Read-only probes such as `status`, `diff`, `log`, `rev-parse`, and bare
+`branch`/`tag` listings are ignored. So are `add`, which precedes nearly every
+commit, and `fetch`, which editors and Lazygit run on timers.
 
 ## Local development
 
@@ -42,6 +53,6 @@ socket never prevents the wrapped command from running.
 
 ## Scope
 
-Version 0.2 supports macOS and Linux with Git, Herdr 0.9+, and no runtime
-dependencies beyond the compiled binary. Raw stdout/stderr transfer progress is
-not intercepted; the HUD derives phases from structured Trace2 events.
+Version 0.3 supports macOS and Linux with Git, Herdr 0.9+, and no runtime
+dependencies beyond the compiled binary. Raw stdout/stderr is not intercepted;
+failure phases come from structured Trace2 events.

@@ -20,31 +20,22 @@ import (
 	"github.com/purehate/herdr-git-hud/internal/traceevent"
 )
 
-const (
-	lingerDuration = 2200 * time.Millisecond
-	pluginID       = "purehate.git-hud"
-)
-
 type pendingOperation struct {
-	SID      string
-	Command  string
-	Label    string
-	Argv     []string
-	Repo     string
-	Visible  bool
-	Step     int
-	Started  int64
-	Sequence int64
+	SID     string
+	Command string
+	Label   string
+	Argv    []string
+	Repo    string
+	Phase   string
+	Visible bool
+	Started int64
 }
 
 type runner struct {
-	mu         sync.Mutex
-	paths      model.Paths
-	herdr      string
-	pending    map[string]*pendingOperation
-	state      model.State
-	hudOpen    bool
-	closeTimer *time.Timer
+	mu      sync.Mutex
+	herdr   string
+	pending map[string]*pendingOperation
+	notify  func(title, body string) error
 }
 
 func Run() error {
@@ -66,8 +57,8 @@ func Run() error {
 	}
 	defer func() { _ = os.Remove(paths.PIDFile) }()
 
-	r := &runner{paths: paths, herdr: herdrBinary(), pending: make(map[string]*pendingOperation)}
-	defer r.closeHUD()
+	r := &runner{herdr: herdrBinary(), pending: make(map[string]*pendingOperation)}
+	r.notify = r.showToast
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(stop)
@@ -146,9 +137,7 @@ func (r *runner) handleExternal(event traceevent.Event) {
 			return
 		}
 		operation.Visible = true
-		operation.Sequence = model.NowMillis()
 		r.pending[key] = operation
-		r.start(operation)
 	case "operation_finish":
 		operation := r.pending[key]
 		if operation == nil {
@@ -201,110 +190,33 @@ func (r *runner) tryStart(operation *pendingOperation) {
 		return
 	}
 	operation.Visible = true
-	operation.Sequence = model.NowMillis()
-	r.start(operation)
-}
-
-func (r *runner) start(operation *pendingOperation) {
-	status, _ := gitinfo.Collect(operation.Repo)
-	label := operation.Label
-	phase := "Running " + label
-	if label == "" {
-		label = "git " + operation.Command
-		phase = "Starting git " + operation.Command
-	}
-	step := model.Step{Command: operation.Command, Label: label, Phase: "Starting", Result: "running", StartedAt: operation.Started}
-	if r.state.Result == "running" || model.NowMillis() < r.state.CloseAt {
-		r.state.Steps = append(r.state.Steps, step)
-	} else {
-		r.state = model.State{StartedAt: operation.Started, Steps: []model.Step{step}}
-	}
-	operation.Step = len(r.state.Steps) - 1
-	r.state.Sequence = operation.Sequence
-	r.state.Repo = operation.Repo
-	r.state.RepoName = filepath.Base(operation.Repo)
-	r.state.Phase = phase
-	r.state.Result = "running"
-	r.state.CloseAt = 0
-	r.state.Status = status
-	if err := writeState(r.paths.StateFile, r.state); err != nil {
-		log.Printf("write starting state: %v", err)
-	}
-	if r.closeTimer != nil {
-		r.closeTimer.Stop()
-	}
-	if !r.hudOpen {
-		if err := r.openHUD(operation.Repo); err != nil {
-			log.Printf("open popup: %v", err)
-		} else {
-			r.hudOpen = true
-		}
-	}
 }
 
 func (r *runner) updatePhase(operation *pendingOperation, phase string) {
-	if !operation.Visible || phase == "" || operation.Step >= len(r.state.Steps) {
-		return
-	}
-	r.state.Phase = phase
-	r.state.Steps[operation.Step].Phase = phase
-	if err := writeState(r.paths.StateFile, r.state); err != nil {
-		log.Printf("write phase state: %v", err)
+	if operation.Visible && phase != "" {
+		operation.Phase = phase
 	}
 }
 
 func (r *runner) finish(operation *pendingOperation, code int) {
-	if !operation.Visible || operation.Step >= len(r.state.Steps) {
+	if !operation.Visible {
 		return
 	}
-	result := "success"
-	phase := "Completed"
-	if code != 0 {
-		result = "failure"
-		phase = "Failed"
+	status, err := gitinfo.Collect(operation.Repo)
+	if err != nil {
+		log.Printf("collect status: %v", err)
 	}
-	status, _ := gitinfo.Collect(operation.Repo)
-	step := &r.state.Steps[operation.Step]
-	step.Result = result
-	step.ExitCode = code
-	step.Phase = phase
-	step.FinishedAt = model.NowMillis()
-	r.state.Result = result
-	r.state.Phase = phase
-	r.state.Status = status
-	if result == "success" {
-		r.state.CloseAt = time.Now().Add(lingerDuration).UnixMilli()
-	} else {
-		r.state.CloseAt = 0
-	}
-	if err := writeState(r.paths.StateFile, r.state); err != nil {
-		log.Printf("write completion state: %v", err)
-	}
-	r.releaseHUD(operation.Sequence)
-}
-
-func (r *runner) closeHUD() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.closeTimer != nil {
-		r.closeTimer.Stop()
-	}
-	if r.hudOpen {
-		r.state.CloseAt = model.NowMillis()
-		_ = writeState(r.paths.StateFile, r.state)
-		r.hudOpen = false
-	}
-}
-
-func (r *runner) releaseHUD(sequence int64) {
-	r.closeTimer = time.AfterFunc(lingerDuration, func() {
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		if r.state.Sequence != sequence || r.state.Result == "running" {
-			return
+	head := ""
+	if code == 0 && writesHistory[operation.Command] {
+		if head, err = gitinfo.Head(operation.Repo); err != nil {
+			log.Printf("read head: %v", err)
 		}
-		r.hudOpen = false
-	})
+	}
+	elapsed := time.Duration(model.NowMillis()-operation.Started) * time.Millisecond
+	title, body := toastText(operation, code, status, head, elapsed)
+	if err := r.notify(title, body); err != nil {
+		log.Printf("show toast: %v", err)
+	}
 }
 
 func (r *runner) repoIsVisible(repo string) (bool, error) {
@@ -331,14 +243,11 @@ func (r *runner) repoIsVisible(repo string) (bool, error) {
 	return err == nil && samePath(activeRepo, repo), err
 }
 
-func (r *runner) openHUD(repo string) error {
-	_, err := r.herdrOutput("plugin", "pane", "open", "--plugin", pluginID,
-		"--entrypoint", "hud", "--cwd", repo,
-		"--env", "GIT_HUD_STATE_FILE="+r.paths.StateFile)
-	if err != nil {
-		return err
-	}
-	return nil
+// showToast uses Herdr's own notification toast, so placement follows
+// [ui.toast.herdr] like agent completion notices and never takes focus.
+func (r *runner) showToast(title, body string) error {
+	_, err := r.herdrOutput("notification", "show", title, "--body", body, "--sound", "none")
+	return err
 }
 
 func (r *runner) herdrOutput(args ...string) ([]byte, error) {
@@ -380,26 +289,4 @@ func samePath(left, right string) bool {
 		return leftResolved == rightResolved
 	}
 	return filepath.Clean(left) == filepath.Clean(right)
-}
-
-func writeState(path string, state model.State) error {
-	directory := filepath.Dir(path)
-	temporary, err := os.CreateTemp(directory, ".hud-*.json")
-	if err != nil {
-		return fmt.Errorf("create HUD state: %w", err)
-	}
-	temporaryPath := temporary.Name()
-	defer func() { _ = os.Remove(temporaryPath) }()
-	encoder := json.NewEncoder(temporary)
-	if err := encoder.Encode(state); err != nil {
-		_ = temporary.Close()
-		return fmt.Errorf("encode HUD state: %w", err)
-	}
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close HUD state: %w", err)
-	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		return fmt.Errorf("publish HUD state: %w", err)
-	}
-	return nil
 }

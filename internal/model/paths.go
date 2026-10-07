@@ -7,11 +7,10 @@ import (
 )
 
 type Paths struct {
-	StateDir  string
-	Socket    string
-	StateFile string
-	PIDFile   string
-	LogFile   string
+	StateDir string
+	Socket   string
+	PIDFile  string
+	LogFile  string
 }
 
 func PathsFromEnv() (Paths, error) {
@@ -24,11 +23,10 @@ func PathsFromEnv() (Paths, error) {
 		}
 	}
 	return Paths{
-		StateDir:  stateDir,
-		Socket:    filepath.Join(stateDir, "events.sock"),
-		StateFile: filepath.Join(stateDir, "hud.json"),
-		PIDFile:   filepath.Join(stateDir, "daemon.pid"),
-		LogFile:   filepath.Join(stateDir, "daemon.log"),
+		StateDir: stateDir,
+		Socket:   filepath.Join(stateDir, "events.sock"),
+		PIDFile:  filepath.Join(stateDir, "daemon.pid"),
+		LogFile:  filepath.Join(stateDir, "daemon.log"),
 	}, nil
 }
 

@@ -7,7 +7,6 @@ import (
 	"github.com/purehate/herdr-git-hud/internal/control"
 	"github.com/purehate/herdr-git-hud/internal/daemon"
 	"github.com/purehate/herdr-git-hud/internal/operation"
-	"github.com/purehate/herdr-git-hud/internal/view"
 )
 
 func main() {
@@ -20,7 +19,7 @@ func main() {
 
 func run(args []string) (int, error) {
 	if len(args) == 0 {
-		return 1, fmt.Errorf("usage: herdr-git-hud <enable|disable|status|daemon|run|view>")
+		return 1, fmt.Errorf("usage: herdr-git-hud <enable|disable|status|daemon|run>")
 	}
 
 	var err error
@@ -35,8 +34,6 @@ func run(args []string) (int, error) {
 		err = daemon.Command(args[1:])
 	case "run":
 		return operation.Run(args[1:], os.Stdin, os.Stdout, os.Stderr)
-	case "view":
-		err = view.Run()
 	default:
 		return 1, fmt.Errorf("unknown command %q", args[0])
 	}

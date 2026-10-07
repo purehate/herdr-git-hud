@@ -1,8 +1,8 @@
 id = "purehate.git-hud"
 name = "Operation HUD"
-version = "0.2.0"
+version = "0.3.0"
 min_herdr_version = "0.9.0"
-description = "Animated floating status for Git and wrapped development operations"
+description = "Toast notifications for Git and wrapped development operations"
 platforms = ["macos", "linux"]
 
 [[build]]
@@ -28,11 +28,3 @@ id = "status"
 title = "Operation HUD: status"
 contexts = ["global"]
 command = ["./bin/herdr-git-hud", "status"]
-
-[[panes]]
-id = "hud"
-title = "Operation activity"
-placement = "popup"
-width = "90%"
-height = "90%"
-command = ["./bin/herdr-git-hud", "view"]

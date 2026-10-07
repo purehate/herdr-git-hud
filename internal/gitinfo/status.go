@@ -29,6 +29,15 @@ func Collect(repo string) (model.RepoStatus, error) {
 	return ParseStatus(output), nil
 }
 
+// Head returns the abbreviated hash and subject of the checked-out commit.
+func Head(repo string) (string, error) {
+	output, err := run(repo, "log", "-1", "--format=%h %s")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(output), nil
+}
+
 func ParseStatus(output string) model.RepoStatus {
 	status := model.RepoStatus{}
 	scanner := bufio.NewScanner(strings.NewReader(output))

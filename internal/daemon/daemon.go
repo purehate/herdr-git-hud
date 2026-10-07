@@ -94,10 +94,16 @@ func prepareSocket(paths model.Paths) error {
 }
 
 func (r *runner) listen(connection *net.UnixConn) error {
+	// Handlers run git and herdr, so they stay off the read loop; a stalled
+	// read would let the small datagram buffer drop Trace2 events.
 	events := make(chan traceevent.Event, 8192)
 	go func() {
 		for event := range events {
-			r.handle(event)
+			if event.HUDType != "" {
+				r.handleExternal(event)
+			} else {
+				r.handle(event)
+			}
 		}
 	}()
 
@@ -111,11 +117,7 @@ func (r *runner) listen(connection *net.UnixConn) error {
 		if err := json.Unmarshal(buffer[:n], &event); err != nil {
 			continue
 		}
-		if event.HUDType != "" {
-			r.handleExternal(event)
-		} else {
-			events <- event
-		}
+		events <- event
 	}
 }
 

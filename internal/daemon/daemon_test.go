@@ -1,8 +1,13 @@
 package daemon
 
 import (
+	"errors"
+	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/purehate/herdr-git-hud/internal/model"
 	"github.com/purehate/herdr-git-hud/internal/traceevent"
@@ -48,6 +53,70 @@ func TestHandleReportsLastPhaseOnExit(t *testing.T) {
 	}
 	if len(runner.pending) != 0 {
 		t.Fatalf("pending = %#v, want the finished operation removed", runner.pending)
+	}
+}
+
+func TestListenKeepsReadingWhileToastIsShown(t *testing.T) {
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	shown := make(chan struct{}, 1)
+	runner, _ := recordingRunner(t)
+	runner.notify = func(title, body string) error {
+		shown <- struct{}{}
+		<-release
+		return nil
+	}
+	runner.pending["operation:op1"] = &pendingOperation{
+		SID: "operation:op1", Label: "odoo-test", Repo: t.TempDir(),
+		Visible: true, Started: model.NowMillis(),
+	}
+	connection, socket := listenOnTempSocket(t)
+	done := make(chan error, 1)
+	go func() { done <- runner.listen(connection) }()
+
+	sendDatagram(t, socket, `{"hud_type":"operation_finish","operation":"op1"}`)
+	select {
+	case <-shown:
+	case <-time.After(2 * time.Second):
+		t.Fatal("toast was never shown")
+	}
+	_ = connection.Close()
+	select {
+	case err := <-done:
+		if !errors.Is(err, net.ErrClosed) {
+			t.Fatalf("listen error = %v, want net.ErrClosed", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("listen stayed blocked while a toast was being shown")
+	}
+}
+
+func listenOnTempSocket(t *testing.T) (*net.UnixConn, string) {
+	t.Helper()
+	// Unix socket paths are capped near 100 bytes, which t.TempDir can exceed.
+	dir, err := os.MkdirTemp("", "hud")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	socket := filepath.Join(dir, "events.sock")
+	connection, err := net.ListenUnixgram("unixgram", &net.UnixAddr{Name: socket, Net: "unixgram"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = connection.Close() })
+	return connection, socket
+}
+
+func sendDatagram(t *testing.T, socket, payload string) {
+	t.Helper()
+	connection, err := net.DialUnix("unixgram", nil, &net.UnixAddr{Name: socket, Net: "unixgram"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = connection.Close() }()
+	if _, err := connection.Write([]byte(payload)); err != nil {
+		t.Fatal(err)
 	}
 }
 

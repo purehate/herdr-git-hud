@@ -1,7 +1,7 @@
 # Operation HUD for Herdr
 
 Operation HUD shows a small Herdr toast when a meaningful operation finishes in
-the repository currently visible in Herdr. It uses Herdr's own notification
+any repository, focused or not. It uses Herdr's own notification
 toast, the same surface as agent completion notices, so it never takes focus.
 No position is passed, so Herdr's toast placement applies (bottom-right unless
 `[ui.toast.herdr] position` says otherwise). Git commands launched by

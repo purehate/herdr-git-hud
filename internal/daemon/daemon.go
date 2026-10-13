@@ -131,15 +131,10 @@ func (r *runner) handleExternal(event traceevent.Event) {
 		if event.Operation == "" || event.OperationLabel == "" || event.Repo == "" {
 			return
 		}
-		operation := &pendingOperation{
-			SID: key, Label: event.OperationLabel, Repo: filepath.Clean(event.Repo), Started: model.NowMillis(),
+		r.pending[key] = &pendingOperation{
+			SID: key, Label: event.OperationLabel, Repo: filepath.Clean(string(event.Repo)),
+			Visible: true, Started: model.NowMillis(),
 		}
-		visible, err := r.repoIsVisible(operation.Repo)
-		if err != nil || !visible {
-			return
-		}
-		operation.Visible = true
-		r.pending[key] = operation
 	case "operation_finish":
 		operation := r.pending[key]
 		if operation == nil {
@@ -187,10 +182,6 @@ func (r *runner) tryStart(operation *pendingOperation) {
 	if operation.Repo == "" || !traceevent.IsVisibleOperation(operation.Command, operation.Argv) {
 		return
 	}
-	visible, err := r.repoIsVisible(operation.Repo)
-	if err != nil || !visible {
-		return
-	}
 	operation.Visible = true
 }
 
@@ -219,30 +210,6 @@ func (r *runner) finish(operation *pendingOperation, code int) {
 	if err := r.notify(title, body); err != nil {
 		log.Printf("show toast: %v", err)
 	}
-}
-
-func (r *runner) repoIsVisible(repo string) (bool, error) {
-	output, err := r.herdrOutput("pane", "current")
-	if err != nil {
-		return false, err
-	}
-	var response struct {
-		Result struct {
-			Pane struct {
-				CWD           string `json:"cwd"`
-				ForegroundCWD string `json:"foreground_cwd"`
-			} `json:"pane"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(output, &response); err != nil {
-		return false, fmt.Errorf("decode focused pane: %w", err)
-	}
-	cwd := response.Result.Pane.ForegroundCWD
-	if cwd == "" {
-		cwd = response.Result.Pane.CWD
-	}
-	activeRepo, err := gitinfo.Root(cwd)
-	return err == nil && samePath(activeRepo, repo), err
 }
 
 // showToast uses Herdr's own notification toast, so placement follows
@@ -282,13 +249,4 @@ func herdrBinary() string {
 		return value
 	}
 	return "herdr"
-}
-
-func samePath(left, right string) bool {
-	leftResolved, leftErr := filepath.EvalSymlinks(left)
-	rightResolved, rightErr := filepath.EvalSymlinks(right)
-	if leftErr == nil && rightErr == nil {
-		return leftResolved == rightResolved
-	}
-	return filepath.Clean(left) == filepath.Clean(right)
 }

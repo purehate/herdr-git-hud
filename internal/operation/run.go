@@ -42,7 +42,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) 
 		HUDType:        "operation_start",
 		Operation:      operationID,
 		OperationLabel: parsed.Label,
-		Repo:           repo,
+		Repo:           traceevent.RepoField(repo),
 	})
 
 	child := exec.Command(parsed.Args[0], parsed.Args[1:]...)
@@ -95,7 +95,7 @@ func sendFinish(operationID, label, repo string, exitCode int) {
 		HUDType:        "operation_finish",
 		Operation:      operationID,
 		OperationLabel: label,
-		Repo:           repo,
+		Repo:           traceevent.RepoField(repo),
 		ExitCode:       exitCode,
 	})
 }

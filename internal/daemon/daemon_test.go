@@ -38,6 +38,21 @@ func TestFinishSkipsHiddenOperation(t *testing.T) {
 	}
 }
 
+func TestTryStartMarksVisibleWithoutFocus(t *testing.T) {
+	runner, _ := recordingRunner(t)
+	operation := &pendingOperation{
+		Command: "commit",
+		Argv:    []string{"git", "commit", "-m", "x"},
+		Repo:    t.TempDir(),
+	}
+
+	runner.tryStart(operation)
+
+	if !operation.Visible {
+		t.Fatal("a commit must be visible regardless of which repo is focused")
+	}
+}
+
 func TestHandleReportsLastPhaseOnExit(t *testing.T) {
 	runner, toasts := recordingRunner(t)
 	runner.pending["root"] = &pendingOperation{

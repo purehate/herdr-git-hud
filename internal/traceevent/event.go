@@ -1,22 +1,40 @@
 package traceevent
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
+
+// RepoField accepts both shapes of the "repo" key. Trace2's def_repo and region
+// events send a numeric repo index, which the daemon ignores (it uses
+// "worktree"); HUD wrapper events send the repository path as a string. A plain
+// string field makes json.Unmarshal reject every def_repo event, which drops it
+// silently and leaves the operation's repository unknown, so no toast fires.
+type RepoField string
+
+func (field *RepoField) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		return json.Unmarshal(data, (*string)(field))
+	}
+	*field = ""
+	return nil
+}
 
 type Event struct {
-	HUDType        string   `json:"hud_type,omitempty"`
-	Operation      string   `json:"operation,omitempty"`
-	OperationLabel string   `json:"operation_label,omitempty"`
-	Repo           string   `json:"repo,omitempty"`
-	ExitCode       int      `json:"exit_code,omitempty"`
-	Event          string   `json:"event"`
-	SID            string   `json:"sid"`
-	Argv           []string `json:"argv"`
-	Worktree       string   `json:"worktree"`
-	Name           string   `json:"name"`
-	Hierarchy      string   `json:"hierarchy"`
-	Category       string   `json:"category"`
-	Label          string   `json:"label"`
-	Code           int      `json:"code"`
+	HUDType        string    `json:"hud_type,omitempty"`
+	Operation      string    `json:"operation,omitempty"`
+	OperationLabel string    `json:"operation_label,omitempty"`
+	Repo           RepoField `json:"repo,omitempty"`
+	ExitCode       int       `json:"exit_code,omitempty"`
+	Event          string    `json:"event"`
+	SID            string    `json:"sid"`
+	Argv           []string  `json:"argv"`
+	Worktree       string    `json:"worktree"`
+	Name           string    `json:"name"`
+	Hierarchy      string    `json:"hierarchy"`
+	Category       string    `json:"category"`
+	Label          string    `json:"label"`
+	Code           int       `json:"code"`
 }
 
 // add precedes nearly every commit and fetch runs on editor and Lazygit
